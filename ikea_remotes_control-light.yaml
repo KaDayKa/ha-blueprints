@@ -74,7 +74,8 @@ blueprint:
               model: TRADFRI on/off switch (E1743)
             - integration: mqtt
               manufacturer: IKEA
-              model: E2001/E2002/E2313
+              model: STYRBAR remote control
+              model_id: E2001/E2002/E2313
           multiple: true
     light:
       name: Light
