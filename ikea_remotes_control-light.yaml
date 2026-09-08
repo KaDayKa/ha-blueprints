@@ -141,12 +141,12 @@ blueprint:
             Required only when scene cycling is enabled. Set its initial value to -1
             so the first right press selects the first scene. Leave empty when scene
             cycling is disabled.
-          default: []
+          default: null
           selector:
             entity:
               filter:
                 - domain: input_number
-              multiple: true
+              multiple: false
 mode: restart
 max_exceeded: silent
 trigger_variables:
@@ -321,8 +321,6 @@ variables:
   enable_scene_cycling: !input enable_scene_cycling
   scenes: !input scenes
   scene_index: !input scene_index
-  scene_index_entity: >-
-    {{ scene_index[0] if scene_index is sequence and scene_index is not string and scene_index | length > 0 else scene_index }}
 condition:
   - condition: template
     value_template: >-
@@ -338,16 +336,16 @@ actions:
               - scene-previous-z2m
           - condition: template
             value_template: >-
-              {{ enable_scene_cycling and scenes | length > 0 and scene_index_entity not in [none, '', []] }}
+              {{ enable_scene_cycling and scenes | length > 0 and scene_index not in [none, '', []] }}
         sequence:
           - variables:
               next_index: >
-                {% set current = states(scene_index_entity) | int(-1) %}
+                {% set current = states(scene_index) | int(-1) %}
                 {% set count = scenes | length %}
                 {{ (current - 1) % count }}
           - action: input_number.set_value
             target:
-              entity_id: "{{ scene_index_entity }}"
+              entity_id: "{{ scene_index }}"
             data:
               value: "{{ next_index }}"
           - action: scene.turn_on
@@ -360,16 +358,16 @@ actions:
               - scene-next-z2m
           - condition: template
             value_template: >-
-              {{ enable_scene_cycling and scenes | length > 0 and scene_index_entity not in [none, '', []] }}
+              {{ enable_scene_cycling and scenes | length > 0 and scene_index not in [none, '', []] }}
         sequence:
           - variables:
               next_index: >
-                {% set current = states(scene_index_entity) | int(-1) %}
+                {% set current = states(scene_index) | int(-1) %}
                 {% set count = scenes | length %}
                 {{ (current + 1) % count }}
           - action: input_number.set_value
             target:
-              entity_id: "{{ scene_index_entity }}"
+              entity_id: "{{ scene_index }}"
             data:
               value: "{{ next_index }}"
           - action: scene.turn_on
