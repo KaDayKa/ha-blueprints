@@ -23,8 +23,7 @@ blueprint:
       - Press **off** button to turn off the light
       - Hold **on** button to increase the brightness
       - Hold **off** button to decrease the brightness down to 1%
-      - Press **left** on a STYRBAR to activate the previous scene
-      - Press **right** on a STYRBAR to activate the next scene
+      - Optionally enable scene cycling with a STYRBAR: press **left** to activate the previous scene and **right** to activate the next scene
   input:
     remote_devices:
       name: Remotes
@@ -115,6 +114,14 @@ blueprint:
       icon: mdi:palette
       collapsed: true
       input:
+        enable_scene_cycling:
+          name: Enable scene cycling
+          description: >
+            Enable STYRBAR left/right buttons to cycle through the selected scenes.
+            Leave disabled for remotes that do not have left/right buttons.
+          default: false
+          selector:
+            boolean: {}
         scenes:
           name: Scenes
           description: >
@@ -130,13 +137,16 @@ blueprint:
         scene_index:
           name: Scene index helper
           description: >
-            Input number helper used to remember the currently selected scene.
-            Set its initial value to -1 so the first right press selects the first scene.
+            Optional input number helper used to remember the currently selected scene.
+            Required only when scene cycling is enabled. Set its initial value to -1
+            so the first right press selects the first scene. Leave empty when scene
+            cycling is disabled.
+          default: []
           selector:
             entity:
               filter:
                 - domain: input_number
-              multiple: false
+              multiple: true
 mode: restart
 max_exceeded: silent
 trigger_variables:
@@ -308,8 +318,11 @@ variables:
   mqtt_topic: "{{ trigger.topic }}"
   remote_devices: !input remote_devices
   remote_devices_names: "{{ remote_devices | map('device_attr', 'name') | list }}"
+  enable_scene_cycling: !input enable_scene_cycling
   scenes: !input scenes
   scene_index: !input scene_index
+  scene_index_entity: >-
+    {{ scene_index[0] if scene_index is sequence and scene_index is not string and scene_index | length > 0 else scene_index }}
 condition:
   - condition: template
     value_template: >-
@@ -324,16 +337,17 @@ actions:
             id:
               - scene-previous-z2m
           - condition: template
-            value_template: "{{ scenes | length > 0 }}"
+            value_template: >-
+              {{ enable_scene_cycling and scenes | length > 0 and scene_index_entity not in [none, '', []] }}
         sequence:
           - variables:
               next_index: >
-                {% set current = states(scene_index) | int(-1) %}
+                {% set current = states(scene_index_entity) | int(-1) %}
                 {% set count = scenes | length %}
                 {{ (current - 1) % count }}
           - action: input_number.set_value
             target:
-              entity_id: "{{ scene_index }}"
+              entity_id: "{{ scene_index_entity }}"
             data:
               value: "{{ next_index }}"
           - action: scene.turn_on
@@ -345,16 +359,17 @@ actions:
             id:
               - scene-next-z2m
           - condition: template
-            value_template: "{{ scenes | length > 0 }}"
+            value_template: >-
+              {{ enable_scene_cycling and scenes | length > 0 and scene_index_entity not in [none, '', []] }}
         sequence:
           - variables:
               next_index: >
-                {% set current = states(scene_index) | int(-1) %}
+                {% set current = states(scene_index_entity) | int(-1) %}
                 {% set count = scenes | length %}
                 {{ (current + 1) % count }}
           - action: input_number.set_value
             target:
-              entity_id: "{{ scene_index }}"
+              entity_id: "{{ scene_index_entity }}"
             data:
               value: "{{ next_index }}"
           - action: scene.turn_on
