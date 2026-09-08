@@ -6,17 +6,16 @@ blueprint:
   name: Ikea's Remotes 💡 Light control
   description: >
     ## 💡 Control a light with **IKEA's remotes**
-        
+
     Currently supported are:
       - Bilresa
       - RODRET
       - SOMRIG
       - TRADFRI ON/OFF
-
+      - STYRBAR
     Only for use with [ZHA](https://www.home-assistant.io/integrations/zha/)
     or Zigbee2MQTT (cf [MQTT](https://www.home-assistant.io/integrations/mqtt)
     + [Z2M addon](https://www.zigbee2mqtt.io/guide/installation/03_ha_addon.html)).
-
 
     Available controls:
       - Press **on** button to turn on the light
@@ -24,11 +23,13 @@ blueprint:
       - Press **off** button to turn off the light
       - Hold **on** button to increase the brightness
       - Hold **off** button to decrease the brightness down to 1%
+      - Press **left** on a STYRBAR to activate the previous scene
+      - Press **right** on a STYRBAR to activate the next scene
   input:
     remote_devices:
       name: Remotes
       description: >
-        IKEA remote (Bilresa, Rodret, Somrig, Tradfri) to use.
+        IKEA remote (Bilresa, Rodret, Somrig, Tradfri, STYRBAR) to use.
       default: []
       selector:
         device:
@@ -109,14 +110,39 @@ blueprint:
               max: 100.0
               step: 1.0
               mode: slider
+    scene_section:
+      name: Scenes
+      icon: mdi:palette
+      collapsed: true
+      input:
+        scenes:
+          name: Scenes
+          description: >
+            Scenes to cycle through with the STYRBAR left/right buttons.
+            The order determines the cycling order.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: scene
+              multiple: true
+              reorder: true
+        scene_index:
+          name: Scene index helper
+          description: >
+            Input number helper used to remember the currently selected scene.
+            Set its initial value to -1 so the first right press selects the first scene.
+          selector:
+            entity:
+              filter:
+                - domain: input_number
+              multiple: false
 mode: restart
 max_exceeded: silent
-
 trigger_variables:
   mqtt_enabled: "{{ integration_entities('mqtt') != [] }}"
   remote_devices: !input remote_devices
   zha_enabled: "{{ integration_entities('zha') != [] }}"
-
 triggers:
   ###########################
   # SINGLE PRESSES
@@ -171,7 +197,17 @@ triggers:
     payload: 2_short_release
     id: press-off-z2m-somrig
     enabled: "{{ mqtt_enabled }}"
-
+  # STYRBAR scene navigation (Zigbee2MQTT)
+  - trigger: mqtt
+    topic: "+/+/action"
+    payload: arrow_left_click
+    id: scene-previous-z2m
+    enabled: "{{ mqtt_enabled }}"
+  - trigger: mqtt
+    topic: "+/+/action"
+    payload: arrow_right_click
+    id: scene-next-z2m
+    enabled: "{{ mqtt_enabled }}"
   ###########################
   # LONG PRESSES
   ###########################
@@ -272,15 +308,59 @@ variables:
   mqtt_topic: "{{ trigger.topic }}"
   remote_devices: !input remote_devices
   remote_devices_names: "{{ remote_devices | map('device_attr', 'name') | list }}"
+  scenes: !input scenes
+  scene_index: !input scene_index
 condition:
   - condition: template
     value_template: >-
-      {{ 
+      {{
         (trigger.event.data.device_id in remote_devices if is_zha) or
-        (trigger.topic.split('/')[1] in remote_devices_names if is_mqtt) 
+        (trigger.topic.split('/')[1] in remote_devices_names if is_mqtt)
       }}
 actions:
   - choose:
+      - conditions:
+          - condition: trigger
+            id:
+              - scene-previous-z2m
+          - condition: template
+            value_template: "{{ scenes | length > 0 }}"
+        sequence:
+          - variables:
+              next_index: >
+                {% set current = states(scene_index) | int(-1) %}
+                {% set count = scenes | length %}
+                {{ (current - 1) % count }}
+          - action: input_number.set_value
+            target:
+              entity_id: "{{ scene_index }}"
+            data:
+              value: "{{ next_index }}"
+          - action: scene.turn_on
+            target:
+              entity_id: "{{ scenes[next_index] }}"
+            data: {}
+      - conditions:
+          - condition: trigger
+            id:
+              - scene-next-z2m
+          - condition: template
+            value_template: "{{ scenes | length > 0 }}"
+        sequence:
+          - variables:
+              next_index: >
+                {% set current = states(scene_index) | int(-1) %}
+                {% set count = scenes | length %}
+                {{ (current + 1) % count }}
+          - action: input_number.set_value
+            target:
+              entity_id: "{{ scene_index }}"
+            data:
+              value: "{{ next_index }}"
+          - action: scene.turn_on
+            target:
+              entity_id: "{{ scenes[next_index] }}"
+            data: {}
       - conditions:
           - condition: trigger
             id:
